@@ -4,7 +4,7 @@ import * as C from './constants.js';
 export class AIOpponent {
   constructor(paddle) {
     this.paddle = paddle;
-    this.targetPos = new THREE.Vector3(0, C.TABLE_HEIGHT + 0.2, -C.TABLE_LENGTH / 2 - 0.3);
+    this.targetPos = new THREE.Vector3(0, C.TABLE_HEIGHT + 0.2, -C.TABLE_LENGTH / 2 - 0.15);
     this.currentPos = this.targetPos.clone();
     this.restPos = this.targetPos.clone();
 
@@ -22,6 +22,12 @@ export class AIOpponent {
     this.swingTarget = null;
     this.errorOffset = new THREE.Vector3();
     this.serving = false;
+
+    // Smooth angle tracking
+    this.currentPitch = 0;
+    this.currentYaw = 0;
+    this.targetPitch = 0;
+    this.targetYaw = 0;
   }
 
   setDifficulty(level) {
@@ -50,8 +56,29 @@ export class AIOpponent {
     // Smooth movement
     this.currentPos.lerp(this.targetPos, Math.min(1, this.moveSpeed * dt));
 
-    // Update paddle
-    const quat = this.calculatePaddleAngle(ballPos, ballActive);
+    // Smooth angle interpolation
+    this.currentPitch += (this.targetPitch - this.currentPitch) * Math.min(1, 8 * dt);
+    this.currentYaw += (this.targetYaw - this.currentYaw) * Math.min(1, 8 * dt);
+
+    // Update paddle with proper orientation
+    // The paddle's neutral position (identity quaternion) already has the face pointing
+    // forward (-Z) thanks to the inner group pre-rotation.
+    // For the AI, we need the face pointing +Z (toward the player).
+    // So we rotate 180° around Y to flip it, then apply pitch/yaw adjustments.
+    const quat = new THREE.Quaternion();
+
+    // Base: flip paddle to face the player (+Z direction)
+    const flipToPlayer = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(0, Math.PI, 0)
+    );
+
+    // Tilt adjustments
+    const tiltQuat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(this.currentPitch, this.currentYaw, 0)
+    );
+
+    quat.copy(tiltQuat).multiply(flipToPlayer);
+
     this.paddle.updatePosition(this.currentPos, quat);
   }
 
@@ -97,9 +124,19 @@ export class AIOpponent {
 
     this.targetPos.set(targetX, targetY, aiZ);
 
+    // Aim paddle toward the ball
+    const distToBall = Math.abs(ballPos.z - aiZ);
+    this.targetPitch = -0.15; // slightly tilted forward
+
     // Start swing when ball is close
-    if (Math.abs(ballPos.z - aiZ) < 0.4 && !this.isSwinging) {
+    if (distToBall < 0.5 && !this.isSwinging) {
       this.startSwing(ballPos);
+    }
+
+    // Adjust aim toward where we want to hit the ball
+    if (this.swingTarget) {
+      const aimAngle = Math.atan2(this.swingTarget.x - targetX, C.TABLE_LENGTH);
+      this.targetYaw = -aimAngle * 0.3;
     }
   }
 
@@ -112,35 +149,11 @@ export class AIOpponent {
     this.swingTarget = new THREE.Vector3(aimX, 0, C.TABLE_LENGTH / 2);
   }
 
-  calculatePaddleAngle(ballPos, ballActive) {
-    const euler = new THREE.Euler();
-
-    if (this.isSwinging) {
-      this.swingPhase += 0.15;
-
-      if (this.swingPhase > Math.PI) {
-        this.isSwinging = false;
-        this.swingPhase = 0;
-      }
-
-      // Swing motion
-      const swingAngle = Math.sin(this.swingPhase) * 0.8 * this.aggression;
-      euler.set(
-        0.3 + swingAngle,
-        (this.swingTarget ? this.swingTarget.x * 0.3 : 0),
-        0
-      );
-    } else {
-      // Ready position - slightly tilted forward
-      euler.set(0.3, 0, 0);
-    }
-
-    return new THREE.Quaternion().setFromEuler(euler);
-  }
-
   returnToReady(dt) {
     this.targetPos.lerp(this.restPos, Math.min(1, 2 * dt));
     this.isSwinging = false;
+    this.targetPitch = -0.1;
+    this.targetYaw = 0;
   }
 
   idle(dt) {
@@ -149,8 +162,10 @@ export class AIOpponent {
     this.targetPos.set(
       Math.sin(time * 0.5) * 0.1,
       C.TABLE_HEIGHT + 0.2 + Math.sin(time * 0.3) * 0.02,
-      -C.TABLE_LENGTH / 2 - 0.3
+      -C.TABLE_LENGTH / 2 - 0.15
     );
+    this.targetPitch = -0.1;
+    this.targetYaw = 0;
   }
 
   serve(physics) {
@@ -165,10 +180,6 @@ export class AIOpponent {
 
     // Aim at a random spot on the player's side
     const targetX = (Math.random() - 0.5) * C.TABLE_WIDTH * 0.6;
-    const targetZ = C.TABLE_LENGTH / 4 + Math.random() * C.TABLE_LENGTH / 4;
-
-    // Calculate velocity to reach target after bouncing on AI side first
-    const bounceZ = -C.TABLE_LENGTH / 4 + (Math.random() - 0.5) * C.TABLE_LENGTH / 4;
 
     const speed = 2.5 + this.aggression * 2.5;
     const vx = (targetX - servePos.x) * 0.8;

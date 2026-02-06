@@ -264,6 +264,11 @@ export class GameScene {
     fillLight.position.set(2, 2.5, 3);
     this.scene.add(fillLight);
 
+    // Back fill from the AI side (subtle, reduces harsh shadows)
+    const backFill = new THREE.PointLight(0xc8d8ff, 0.25, 6);
+    backFill.position.set(-1, 2.0, -3);
+    this.scene.add(backFill);
+
     // Overhead fluorescent panels (visual only)
     const panelGeo = new THREE.BoxGeometry(0.3, 0.02, 1.2);
     const panelMat = new THREE.MeshStandardMaterial({

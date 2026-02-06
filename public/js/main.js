@@ -64,15 +64,16 @@ class Game {
     this.scene.fog = new THREE.Fog(0x1a1a2e, 5, 12);
 
     // Camera (for non-VR mode)
+    // Position slightly elevated and behind the player's end, looking at the table
     this.camera = new THREE.PerspectiveCamera(
-      70, window.innerWidth / window.innerHeight, 0.01, 50
+      65, window.innerWidth / window.innerHeight, 0.01, 50
     );
     this.camera.position.set(
-      C.PLAYER_POSITION.x,
-      1.6, // standing eye height
-      C.PLAYER_POSITION.z
+      0,
+      1.65, // standing eye height
+      C.TABLE_LENGTH / 2 + 0.8
     );
-    this.camera.lookAt(0, C.TABLE_HEIGHT, 0);
+    this.camera.lookAt(0, C.TABLE_HEIGHT + 0.1, 0);
 
     // Build scene
     new GameScene(this.scene);
@@ -359,15 +360,16 @@ class Game {
     const paddleData = this.playerPaddle.getCollisionData();
     const servePos = {
       x: paddleData.pos.x,
-      y: paddleData.pos.y + 0.1,
+      y: paddleData.pos.y + 0.12,
       z: paddleData.pos.z - 0.05,
     };
 
-    // Toss the ball up slightly, then player must hit it
+    // Toss the ball up with a slight forward trajectory
+    // The player needs to hit it with their paddle
     const vel = {
-      x: (Math.random() - 0.5) * 0.3,
-      y: 2.0,
-      z: -0.3,
+      x: (Math.random() - 0.5) * 0.2,
+      y: 2.5,
+      z: -0.5,
     };
 
     this.physics.serveBall(servePos, vel, { x: 0, y: 0, z: 0 });
@@ -440,7 +442,7 @@ class Game {
       const paddleData = this.playerPaddle.getCollisionData();
       const ballPos = {
         x: paddleData.pos.x,
-        y: paddleData.pos.y + 0.08,
+        y: paddleData.pos.y + 0.1,
         z: paddleData.pos.z - 0.05,
       };
       this.ball.show(ballPos);
@@ -465,19 +467,16 @@ class Game {
     // Physics step
     const event = this.physics.update(dt);
 
-    // Check paddle collisions
+    // Check paddle collisions using the new API
+    // getCollisionData() now returns { pos, quat, normal, vel }
     const playerData = this.playerPaddle.getCollisionData();
-    const hit = this.physics.checkPaddleCollision(
-      playerData.pos, playerData.quat, playerData.vel, true
-    );
+    const hit = this.physics.checkPaddleCollision(playerData, true);
     if (hit) {
       this.audio.playPaddleHit(0.7);
     }
 
     const aiData = this.aiPaddle.getCollisionData();
-    const aiHit = this.physics.checkPaddleCollision(
-      aiData.pos, aiData.quat, aiData.vel, false
-    );
+    const aiHit = this.physics.checkPaddleCollision(aiData, false);
     if (aiHit) {
       this.audio.playPaddleHit(0.5);
     }
@@ -496,7 +495,6 @@ class Game {
 
       case 'net':
         this.audio.playNetHit();
-        // Ball hit the net - could be a let (on serve) or point
         break;
 
       case 'edge':
@@ -520,8 +518,7 @@ class Game {
 
     if (lastHit === 'player') {
       if (!bouncedAI && crossedNet) {
-        // Player hit it over but it didn't bounce on AI's side - player's point
-        // (ball went off the end of the table on AI's side)
+        // Player hit it over but it didn't bounce on AI's side
         if (this.physics.ballPos.z < -C.TABLE_LENGTH / 2) {
           scorer = 'ai'; // Player hit it past the table
         } else {
