@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VR Table Tennis</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      color: #eee;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+    #overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      background: rgba(10, 10, 30, 0.92);
+      transition: opacity 0.5s;
+    }
+    #overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #overlay h1 {
+      font-size: 3rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    #overlay p {
+      font-size: 1.1rem;
+      color: #aaa;
+      margin-bottom: 2rem;
+    }
+    .btn {
+      padding: 16px 48px;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      margin: 8px;
+      font-weight: 600;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    .btn:active { transform: translateY(0); }
+    #enterVR {
+      background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+      color: #fff;
+      display: none;
+    }
+    #playFlat {
+      background: #333;
+      color: #fff;
+    }
+    #vrStatus {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: #888;
+    }
+    #scoreBoard {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      font-size: 2rem;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+    #gameMessage {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+      font-size: 1.5rem;
+      color: #ffdd57;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #gameMessage.visible { opacity: 1; }
+    canvas { display: block; }
+    #instructions {
+      margin-top: 1.5rem;
+      max-width: 500px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #777;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <h1>VR Table Tennis</h1>
+    <p>Realistic table tennis for Oculus Quest 3</p>
+    <button id="enterVR" class="btn">Enter VR</button>
+    <button id="playFlat" class="btn">Play on Screen</button>
+    <div id="vrStatus"></div>
+    <div id="instructions">
+      <strong>VR Mode:</strong> Use your right controller as the paddle. Squeeze trigger to serve.<br>
+      <strong>Screen Mode:</strong> Move mouse to control paddle. Click to serve.<br>
+      First to 11 points wins (must win by 2).
+    </div>
+  </div>
+  <div id="scoreBoard"></div>
+  <div id="gameMessage"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
