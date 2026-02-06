@@ -7,6 +7,7 @@ export class Physics {
     this.ballSpin = { x: 0, y: 0, z: 0 }; // angular velocity in rad/s
     this.ballActive = false;
     this.lastBounceTime = 0;
+    this.lastPaddleHitTime = 0;
     this.bouncedOnPlayerSide = false;
     this.bouncedOnAISide = false;
     this.crossedNet = false;
@@ -32,6 +33,7 @@ export class Physics {
     this.bouncedOnPlayerSide = false;
     this.bouncedOnAISide = false;
     this.crossedNet = false;
+    this.lastPaddleHitTime = 0;
   }
 
   update(dt) {
@@ -56,7 +58,7 @@ export class Physics {
     // Gravity
     this.ballVel.y += C.GRAVITY * dt;
 
-    // Air resistance
+    // Air resistance (quadratic drag)
     const speed = Math.sqrt(
       this.ballVel.x ** 2 + this.ballVel.y ** 2 + this.ballVel.z ** 2
     );
@@ -229,8 +231,15 @@ export class Physics {
     return null;
   }
 
-  checkPaddleCollision(paddlePos, paddleQuat, paddleVel, isPlayer) {
+  checkPaddleCollision(paddleData, isPlayer) {
     if (!this.ballActive) return false;
+
+    const paddlePos = paddleData.pos;
+    const paddleVel = paddleData.vel;
+
+    // Debounce paddle hits (minimum 80ms between hits)
+    const now = performance.now();
+    if (now - this.lastPaddleHitTime < 80) return false;
 
     // Distance check
     const dx = this.ballPos.x - paddlePos.x;
@@ -238,21 +247,25 @@ export class Physics {
     const dz = this.ballPos.z - paddlePos.z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    if (dist > C.PADDLE_RADIUS + C.BALL_RADIUS + 0.03) return false;
+    // Quick reject: too far away
+    const hitRadius = C.PADDLE_RADIUS + C.BALL_RADIUS + 0.02;
+    if (dist > hitRadius) return false;
 
-    // Get paddle normal (local Y axis transformed by quaternion)
-    const nx = 2 * (paddleQuat.x * paddleQuat.y + paddleQuat.w * paddleQuat.z);
-    const ny = 1 - 2 * (paddleQuat.x * paddleQuat.x + paddleQuat.z * paddleQuat.z);
-    const nz = 2 * (paddleQuat.y * paddleQuat.z - paddleQuat.w * paddleQuat.x);
+    // Use the pre-computed paddle face normal from getCollisionData()
+    const nx = paddleData.normal.x;
+    const ny = paddleData.normal.y;
+    const nz = paddleData.normal.z;
 
-    // Project distance onto paddle plane
-    const projDist = Math.abs(dx * nx + dy * ny + dz * nz);
+    // Project ball-to-paddle distance onto paddle normal (signed distance from paddle plane)
+    const projDist = dx * nx + dy * ny + dz * nz;
+    const absProjDist = Math.abs(projDist);
 
-    // Project distance onto paddle face
-    const faceDist = Math.sqrt(dist * dist - projDist * projDist);
+    // Distance along the paddle face (radial distance on the face plane)
+    const faceDist = Math.sqrt(Math.max(0, dist * dist - projDist * projDist));
 
-    if (projDist < C.PADDLE_THICKNESS / 2 + C.BALL_RADIUS + 0.01 &&
-        faceDist < C.PADDLE_RADIUS + C.BALL_RADIUS * 0.5) {
+    // Check if ball is close to paddle face AND within paddle radius
+    const faceThreshold = C.PADDLE_THICKNESS / 2 + C.BALL_RADIUS + 0.015;
+    if (absProjDist < faceThreshold && faceDist < C.PADDLE_RADIUS + C.BALL_RADIUS * 0.5) {
 
       // Prevent double hits
       if (this.lastHitBy === (isPlayer ? 'player' : 'ai')) {
@@ -262,18 +275,20 @@ export class Physics {
         }
       }
 
-      // Calculate reflection
+      // Calculate relative velocity (ball velocity minus paddle velocity)
       const relVelX = this.ballVel.x - (paddleVel?.x || 0);
       const relVelY = this.ballVel.y - (paddleVel?.y || 0);
       const relVelZ = this.ballVel.z - (paddleVel?.z || 0);
 
+      // Relative velocity along paddle normal
       const velDotN = relVelX * nx + relVelY * ny + relVelZ * nz;
 
-      // Only hit if ball is moving toward paddle
-      if (isPlayer && velDotN > 0.5) return false;
-      if (!isPlayer && velDotN < -0.5) return false;
+      // Only register hit if ball is approaching the paddle face (not receding)
+      // Use a small threshold to be forgiving
+      if (isPlayer && velDotN > 0.2) return false;
+      if (!isPlayer && velDotN < -0.2) return false;
 
-      // Reflect velocity
+      // --- Reflect velocity off paddle face ---
       const restitution = C.PADDLE_RESTITUTION;
       this.ballVel.x -= (1 + restitution) * velDotN * nx;
       this.ballVel.y -= (1 + restitution) * velDotN * ny;
@@ -284,25 +299,46 @@ export class Physics {
         paddleVel.x ** 2 + paddleVel.y ** 2 + paddleVel.z ** 2
       ) : 0;
 
-      if (paddleVel && paddleSpeed > 0.1) {
-        const transferFactor = 1.2;
+      if (paddleVel && paddleSpeed > 0.05) {
+        const transferFactor = 1.3;
         this.ballVel.x += paddleVel.x * transferFactor;
         this.ballVel.y += paddleVel.y * transferFactor;
         this.ballVel.z += paddleVel.z * transferFactor;
 
         // Generate spin based on paddle motion
         // Cross product of paddle velocity and paddle normal gives spin axis
-        this.ballSpin.x += (paddleVel.y * nz - paddleVel.z * ny) * 30;
-        this.ballSpin.y += (paddleVel.z * nx - paddleVel.x * nz) * 30;
-        this.ballSpin.z += (paddleVel.x * ny - paddleVel.y * nx) * 30;
+        this.ballSpin.x += (paddleVel.y * nz - paddleVel.z * ny) * 25;
+        this.ballSpin.y += (paddleVel.z * nx - paddleVel.x * nz) * 25;
+        this.ballSpin.z += (paddleVel.x * ny - paddleVel.y * nx) * 25;
       }
 
-      // Push ball away from paddle to prevent re-collision
-      const pushDir = isPlayer ? -1 : 1;
-      this.ballPos.z += pushDir * 0.03;
+      // Add a small amount of directional control based on where ball hit on face
+      // Off-center hits add a slight sideways deflection
+      if (faceDist > C.PADDLE_RADIUS * 0.3) {
+        // Normalize the face-plane offset and add subtle deflection
+        const faceOffsetScale = 0.3 * (faceDist / C.PADDLE_RADIUS);
+        // Project dx,dy,dz onto paddle face plane
+        const faceX = dx - projDist * nx;
+        const faceY = dy - projDist * ny;
+        const faceZ = dz - projDist * nz;
+        const faceLen = Math.sqrt(faceX * faceX + faceY * faceY + faceZ * faceZ);
+        if (faceLen > 0.001) {
+          this.ballVel.x += (faceX / faceLen) * faceOffsetScale;
+          this.ballVel.y += (faceY / faceLen) * faceOffsetScale;
+          this.ballVel.z += (faceZ / faceLen) * faceOffsetScale;
+        }
+      }
+
+      // Push ball away from paddle along paddle normal to prevent re-collision
+      const pushDist = faceThreshold + 0.005;
+      const pushSign = projDist >= 0 ? 1 : -1;
+      this.ballPos.x = paddlePos.x + nx * pushDist * pushSign;
+      this.ballPos.y = paddlePos.y + ny * pushDist * pushSign;
+      this.ballPos.z = paddlePos.z + nz * pushDist * pushSign;
 
       // Update hit state
       this.lastHitBy = isPlayer ? 'player' : 'ai';
+      this.lastPaddleHitTime = now;
       this.crossedNet = false;
       this.bouncedOnPlayerSide = false;
       this.bouncedOnAISide = false;
