@@ -45,6 +45,14 @@ export const ROOM_HEIGHT = 3.5;
 // Player position (standing at the end of the table)
 export const PLAYER_POSITION = { x: 0, y: 0, z: TABLE_LENGTH / 2 + 0.5 };
 
+// Difficulty presets
+export const DIFFICULTY_PRESETS = {
+  easy:   { level: 0.3,  name: 'Easy',   reactionDelay: 0.18, moveSpeed: 2.2, accuracy: 0.45, aggression: 0.25 },
+  medium: { level: 0.55, name: 'Medium', reactionDelay: 0.10, moveSpeed: 3.8, accuracy: 0.70, aggression: 0.45 },
+  hard:   { level: 0.8,  name: 'Hard',   reactionDelay: 0.05, moveSpeed: 5.2, accuracy: 0.88, aggression: 0.65 },
+  pro:    { level: 0.95, name: 'Pro',    reactionDelay: 0.025, moveSpeed: 6.0, accuracy: 0.95, aggression: 0.82 },
+};
+
 // Colors
 export const COLORS = {
   tableTop: 0x1a5276,
